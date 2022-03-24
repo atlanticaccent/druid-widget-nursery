@@ -11,4 +11,4 @@ crate-type = ["dylib"]
 druid-widget-nursery = { path = "../..", features = ["hot-reload"] }
 
 [dependencies.druid]
-git = "https://github.com/linebender/druid"
+git = "https://github.com/atlanticaccent/druid"
