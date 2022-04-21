@@ -12,6 +12,6 @@ druid-widget-nursery = { path = "../..", features = ["hot-reload"] }
 
 [dependencies.druid]
 git = "https://github.com/atlanticaccent/druid"
-rev = "9b263db017ac4e593d017d2525b21c33f1939817" # update this when upgrading to newer druid
+rev = "5223a253c32eff87f41b9c25c87abcf8e8004481" # update this when upgrading to newer druid
 # path = "../../projects/druid/druid"
 features = ["im"]
