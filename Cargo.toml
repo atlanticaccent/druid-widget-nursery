@@ -7,6 +7,9 @@ edition = "2018"
 license = "MIT OR Apache-2.0"
 
 [features]
+default = ["gtk"]
+gtk = ["druid/gtk"]
+x11 = ["druid/x11"]
 async = ["tokio/rt", "futures", "flume"]
 derive = ["druid-widget-nursery-derive"]
 hot-reload = ["libloading", "notify5", "rand"]
@@ -16,7 +19,7 @@ material-icons = ["druid-material-icons"]
 # TODO convert to using tracing
 log = "0.4.11"
 
-druid = { version = "0.8", features = ["im"] }
+druid = { version = "0.8", default-features = false, features = ["im"] }
 
 # theme loader
 # TODO: update this to 5.0
