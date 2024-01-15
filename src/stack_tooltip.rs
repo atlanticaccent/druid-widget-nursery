@@ -17,6 +17,7 @@
 use std::{
     cell::RefCell,
     convert::{TryFrom, TryInto},
+    fmt::Debug,
     rc::Rc,
     sync::Arc,
 };
@@ -103,6 +104,16 @@ impl<T: Data> StackTooltip<T> {
 
         self
     }
+
+    pub fn set_offset(&mut self, offset: impl Into<Point>) {
+        self.0.wrapped_mut().set_offset(offset)
+    }
+
+    pub fn with_offset(mut self, offset: impl Into<Point>) -> Self {
+        self.set_offset(offset);
+
+        self
+    }
 }
 
 impl<T: Data> Widget<T> for StackTooltip<T> {
@@ -151,6 +162,18 @@ struct TooltipState<T> {
     show: bool,
     position: StackChildPosition,
     label_size: Option<Size>,
+    offset: Point,
+}
+
+impl<T> Debug for TooltipState<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TooltipState")
+            .field("show", &self.show)
+            .field("position", &self.position)
+            .field("label_size", &self.label_size)
+            .field("offset", &self.offset)
+            .finish()
+    }
 }
 
 type RichTextCell = Rc<RefCell<(RichText, Vec<YetAnotherAttribute>)>>;
@@ -164,6 +187,7 @@ struct StackTooltipInternal<T> {
     background: BackgroundCell,
     border: BorderCell,
     use_crosshair: bool,
+    offset: Option<Point>,
 }
 
 fn make_state<T: Data>(data: T) -> TooltipState<T> {
@@ -172,6 +196,7 @@ fn make_state<T: Data>(data: T) -> TooltipState<T> {
         show: false,
         position: StackChildPosition::new().height(Some(0.0)),
         label_size: None,
+        offset: Point::default(),
     }
 }
 
@@ -194,7 +219,9 @@ impl<T: Data> StackTooltipInternal<T> {
             .with_child(widget.lens(TooltipState::data))
             .with_positioned_child(
                 Either::new(
-                    |state: &TooltipState<T>, _| state.show && is_some_position(&state.position),
+                    |state: &TooltipState<T>, _| {
+                        dbg!(&state).show && is_some_position(&state.position)
+                    },
                     TooltipLabel::new(text.clone(), label_id, background.clone(), border.clone()),
                     SizedBox::empty(),
                 ),
@@ -213,6 +240,7 @@ impl<T: Data> StackTooltipInternal<T> {
                 background,
                 border,
                 use_crosshair: false,
+                offset: None,
             },
         )
     }
@@ -243,6 +271,10 @@ impl<T: Data> StackTooltipInternal<T> {
     pub fn set_crosshair(&mut self, crosshair: bool) {
         self.use_crosshair = crosshair
     }
+
+    pub fn set_offset(&mut self, offset: impl Into<Point>) {
+        self.offset = Some(offset.into());
+    }
 }
 
 impl<T: Data> Widget<TooltipState<T>> for StackTooltipInternal<T> {
@@ -268,6 +300,9 @@ impl<T: Data> Widget<TooltipState<T>> for StackTooltipInternal<T> {
             None
         } {
             if ctx.is_hot() && ctx.size().to_rect().contains(pos) {
+                let offset = self.offset.unwrap_or_default();
+                data.offset = offset;
+
                 let mut x = pos.x;
                 let mut y = pos.y;
 
@@ -446,14 +481,17 @@ impl<T: Data> Widget<TooltipState<T>> for TooltipLabel {
         &mut self,
         ctx: &mut druid::LayoutCtx,
         bc: &druid::BoxConstraints,
-        _data: &TooltipState<T>,
+        data: &TooltipState<T>,
         env: &druid::Env,
     ) -> druid::Size {
-        self.label.layout(ctx, bc, &self.text.borrow().0, env)
+        let mut size = self.label.layout(ctx, bc, &self.text.borrow().0, env);
+        size.width += data.offset.x;
+        size.height += data.offset.y;
+        size
     }
 
-    fn paint(&mut self, ctx: &mut druid::PaintCtx, _data: &TooltipState<T>, env: &druid::Env) {
-        let mut rect = ctx.size().to_rect();
+    fn paint(&mut self, ctx: &mut druid::PaintCtx, data: &TooltipState<T>, env: &druid::Env) {
+        let mut rect = ctx.size().to_rect().inset((-data.offset.x, -data.offset.y, 0.0, 0.0));
         rect.x0 -= 2.0;
         rect.y1 += 2.0;
 
@@ -492,7 +530,7 @@ impl<T: Data> Widget<TooltipState<T>> for TooltipLabel {
             ctx.paint_with_z_index(1_000_000, move |ctx| {
                 ctx.fill(rect, &fill_brush);
 
-                ctx.draw_text(&text, (0.0, 0.0));
+                ctx.draw_text(&text, rect.origin());
 
                 ctx.stroke(rect, &border_brush, border_width);
             });

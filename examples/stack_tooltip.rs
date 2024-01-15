@@ -23,7 +23,9 @@ fn main() {
         .with_child(
             Flex::row()
                 .with_child(
-                    Label::new("TOP LEFT").stack_tooltip(String::from("TOOLTIP LOREM IPSUM DORUM")),
+                    Label::new("TOP LEFT")
+                        .stack_tooltip(String::from("TOOLTIP LOREM IPSUM DORUM"))
+                        .with_offset((10.0, 10.0)),
                 )
                 .with_flex_spacer(1.0)
                 .with_child(StackTooltip::new(
@@ -40,6 +42,7 @@ fn main() {
                         String::from("TOOLTIP LOREM IPSUM DORUM"),
                     )
                     .with_crosshair(true)
+                    .with_offset((5.0, 5.0))
                     .cancel_stack_tooltip(),
                 )
                 .with_flex_spacer(1.0)
@@ -51,7 +54,8 @@ fn main() {
                     .cancel_stack_tooltip(),
                 )
                 .background(druid::theme::BACKGROUND_LIGHT)
-                .stack_tooltip("IGNORE ME"),
+                .stack_tooltip("IGNORE ME")
+                .with_offset((10.0, 10.0)),
         )
         .with_flex_spacer(1.0)
         .with_child(
