@@ -22,7 +22,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::{Stack, StackChildParams, StackChildPosition};
+use crate::{Stack, StackChildParams, StackChildPosition, animation::AnimationCurve};
 use druid::{
     piet::{Text, TextAttribute, TextLayoutBuilder, TextStorage},
     text::{Attribute, RichText},
@@ -114,6 +114,26 @@ impl<T: Data> StackTooltip<T> {
 
         self
     }
+
+    pub fn set_duration(&mut self, duration: f64) {
+        self.0.wrapped_mut().set_duration(duration)
+    }
+
+    pub fn with_duration(mut self, duration: f64) -> Self {
+        self.set_duration(duration);
+
+        self
+    }
+
+    pub fn set_animation_curve(&mut self, animation: AnimationCurve) {
+        self.0.wrapped_mut().set_animation_curve(animation)
+    }
+
+    pub fn with_animation_curve(mut self, animation: AnimationCurve) -> Self {
+        self.set_animation_curve(animation);
+
+        self
+    }
 }
 
 impl<T: Data> Widget<T> for StackTooltip<T> {
@@ -188,6 +208,8 @@ struct StackTooltipInternal<T> {
     border: BorderCell,
     use_crosshair: bool,
     offset: Option<Point>,
+    duration: f64,
+    animation_curve: Option<AnimationCurve>,
 }
 
 fn make_state<T: Data>(data: T) -> TooltipState<T> {
@@ -219,15 +241,14 @@ impl<T: Data> StackTooltipInternal<T> {
             .with_child(widget.lens(TooltipState::data))
             .with_positioned_child(
                 Either::new(
-                    |state: &TooltipState<T>, _| {
-                        dbg!(&state).show && is_some_position(&state.position)
-                    },
+                    |state: &TooltipState<T>, _| state.show && is_some_position(&state.position),
                     TooltipLabel::new(text.clone(), label_id, background.clone(), border.clone()),
                     SizedBox::empty(),
                 ),
                 StackChildParams::dynamic(|TooltipState { position, .. }: &TooltipState<T>, _| {
                     position
-                }),
+                })
+                .duration(0.0),
             );
 
         Scope::from_lens(
@@ -241,6 +262,8 @@ impl<T: Data> StackTooltipInternal<T> {
                 border,
                 use_crosshair: false,
                 offset: None,
+                duration: 0.0,
+                animation_curve: None,
             },
         )
     }
@@ -274,6 +297,14 @@ impl<T: Data> StackTooltipInternal<T> {
 
     pub fn set_offset(&mut self, offset: impl Into<Point>) {
         self.offset = Some(offset.into());
+    }
+
+    pub fn set_duration(&mut self, duration: f64) {
+        self.duration = duration
+    }
+
+    pub fn set_animation_curve(&mut self, animation: AnimationCurve) {
+        self.animation_curve = Some(animation)
     }
 }
 
@@ -491,7 +522,10 @@ impl<T: Data> Widget<TooltipState<T>> for TooltipLabel {
     }
 
     fn paint(&mut self, ctx: &mut druid::PaintCtx, data: &TooltipState<T>, env: &druid::Env) {
-        let mut rect = ctx.size().to_rect().inset((-data.offset.x, -data.offset.y, 0.0, 0.0));
+        let mut rect = ctx
+            .size()
+            .to_rect()
+            .inset((-data.offset.x, -data.offset.y, 0.0, 0.0));
         rect.x0 -= 2.0;
         rect.y1 += 2.0;
 
