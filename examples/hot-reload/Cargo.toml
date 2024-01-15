@@ -14,4 +14,7 @@ druid-widget-nursery = { path = "../..", features = ["hot-reload"] }
 #git = "https://github.com/linebender/druid"
 #rev = "fc05e965c85fced8720c655685e02478e0530e94" # update this when upgrading to newer druid
 # path = "../../projects/druid/druid"
-version = "0.8"
+git = "https://github.com/atlanticaccent/druid"
+branch = "update-gtk"
+default-features = false
+features = ["im"]
