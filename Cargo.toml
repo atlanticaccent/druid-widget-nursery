@@ -16,7 +16,7 @@ material-icons = ["druid-material-icons"]
 # TODO convert to using tracing
 log = "0.4.11"
 
-druid = { git = "https://github.com/atlanticaccent/druid", branch = "update-gtk", default-features = false, features = ["im"] }
+druid = { git = "https://github.com/atlanticaccent/druid", rev = "4c3ed9adc5d1ec7c7ebdd2c8a577086e570f5648", default-features = false, features = ["im"] }
 
 # theme loader
 # TODO: update this to 5.0
