@@ -14,21 +14,13 @@
 
 //! A stack based tooltip widget.
 
-use std::{
-    cell::RefCell,
-    convert::{TryFrom, TryInto},
-    fmt::Debug,
-    rc::Rc,
-    sync::Arc,
-};
+use std::{cell::RefCell, fmt::Debug, rc::Rc, sync::Arc};
 
-use crate::{Stack, StackChildParams, StackChildPosition, animation::AnimationCurve};
+use crate::{animation::AnimationCurve, Stack, StackChildParams, StackChildPosition};
 use druid::{
-    piet::{Text, TextAttribute, TextLayoutBuilder, TextStorage},
-    text::{Attribute, RichText},
+    text::RichText,
     widget::{
-        DefaultScopePolicy, Either, Label, LensScopeTransfer, RawLabel, Scope, SizedBox,
-        WidgetWrapper,
+        DefaultScopePolicy, Either, Label, LensScopeTransfer, Scope, SizedBox, WidgetWrapper,
     },
     Color, Data, KeyOrValue, Lens, Point, RenderContext, Selector, SingleUse, Size, Widget,
     WidgetExt, WidgetId, WidgetPod,
@@ -55,14 +47,8 @@ impl<T: Data> StackTooltip<T> {
         Self(StackTooltipInternal::new(widget, label))
     }
 
-    pub fn set_text_attribute(&mut self, attribute: Attribute) {
-        self.0.wrapped_mut().set_text_attribute(attribute);
-    }
-
-    pub fn with_text_attribute(mut self, attribute: Attribute) -> Self {
-        self.set_text_attribute(attribute);
-
-        self
+    pub fn custom<W: Widget<T> + 'static, WL: Widget<T> + 'static>(widget: W, label: WL) -> Self {
+        Self(StackTooltipInternal::custom(widget, label))
     }
 
     pub fn set_background_color(&mut self, color: impl Into<KeyOrValue<Color>>) {
@@ -196,14 +182,12 @@ impl<T> Debug for TooltipState<T> {
     }
 }
 
-type RichTextCell = Rc<RefCell<(RichText, Vec<YetAnotherAttribute>)>>;
 type BackgroundCell = Rc<RefCell<Option<KeyOrValue<Color>>>>;
 type BorderCell = Rc<RefCell<(Option<KeyOrValue<Color>>, Option<f64>)>>;
 
 struct StackTooltipInternal<T> {
     widget: WidgetPod<TooltipState<T>, Stack<TooltipState<T>>>,
     label_id: Option<WidgetId>,
-    text: RichTextCell,
     background: BackgroundCell,
     border: BorderCell,
     use_crosshair: bool,
@@ -231,9 +215,14 @@ impl<T: Data> StackTooltipInternal<T> {
             PlainOrRich::Plain(plain) => RichText::new(plain.into()),
             PlainOrRich::Rich(rich) => rich,
         };
-        let attrs = vec![];
 
-        let text = Rc::new(RefCell::new((rich_text, attrs)));
+        Self::custom(widget, Label::raw().lens(druid::lens::Constant(rich_text)))
+    }
+
+    fn custom<W: Widget<T> + 'static>(
+        widget: W,
+        label: impl Widget<T> + 'static,
+    ) -> StackTooltipActual<T> {
         let background = BackgroundCell::default();
         let border = BorderCell::default();
         let label_id = WidgetId::next();
@@ -242,7 +231,7 @@ impl<T: Data> StackTooltipInternal<T> {
             .with_positioned_child(
                 Either::new(
                     |state: &TooltipState<T>, _| state.show && is_some_position(&state.position),
-                    TooltipLabel::new(text.clone(), label_id, background.clone(), border.clone()),
+                    TooltipLabel::custom(label, label_id, background.clone(), border.clone()),
                     SizedBox::empty(),
                 ),
                 StackChildParams::dynamic(|TooltipState { position, .. }: &TooltipState<T>, _| {
@@ -257,7 +246,6 @@ impl<T: Data> StackTooltipInternal<T> {
             Self {
                 widget: WidgetPod::new(stack),
                 label_id: Some(label_id),
-                text,
                 background,
                 border,
                 use_crosshair: false,
@@ -266,17 +254,6 @@ impl<T: Data> StackTooltipInternal<T> {
                 animation_curve: None,
             },
         )
-    }
-
-    pub fn set_text_attribute(&mut self, attribute: Attribute) {
-        self.text
-            .borrow_mut()
-            .0
-            .add_attribute(0.., attribute.clone());
-        match attribute.try_into() {
-            Ok(attr) => self.text.borrow_mut().1.push(attr),
-            Err(attrs) => self.text.borrow_mut().1.extend(attrs),
-        };
     }
 
     pub fn set_background_color(&mut self, color: impl Into<KeyOrValue<Color>>) {
@@ -424,34 +401,27 @@ impl<T: Data> Widget<TooltipState<T>> for StackTooltipInternal<T> {
     }
 }
 
-struct TooltipLabel {
+struct TooltipLabel<T, W> {
     id: WidgetId,
-    label: WidgetPod<RichText, RawLabel<RichText>>,
-    text: RichTextCell,
+    label: Rc<RefCell<WidgetPod<T, W>>>,
     background: BackgroundCell,
     border: BorderCell,
 }
 
-impl TooltipLabel {
-    pub fn new(
-        text: RichTextCell,
-        id: WidgetId,
-        background: BackgroundCell,
-        border: BorderCell,
-    ) -> Self {
-        let label = WidgetPod::new(Label::raw());
+impl<T: Data, W: Widget<T>> TooltipLabel<T, W> {
+    pub fn custom(label: W, id: WidgetId, background: BackgroundCell, border: BorderCell) -> Self {
+        let label = WidgetPod::new(label);
 
         Self {
             id,
-            label,
-            text,
+            label: RefCell::new(label).into(),
             background,
             border,
         }
     }
 }
 
-impl<T: Data> Widget<TooltipState<T>> for TooltipLabel {
+impl<T: Data, W: Widget<T> + 'static> Widget<TooltipState<T>> for TooltipLabel<T, W> {
     fn event(
         &mut self,
         ctx: &mut druid::EventCtx,
@@ -485,27 +455,30 @@ impl<T: Data> Widget<TooltipState<T>> for TooltipLabel {
         }
 
         self.label
-            .event(ctx, event, &mut self.text.borrow_mut().0, env)
+            .borrow_mut()
+            .event(ctx, event, &mut data.data, env)
     }
 
     fn lifecycle(
         &mut self,
         ctx: &mut druid::LifeCycleCtx,
         event: &druid::LifeCycle,
-        _data: &TooltipState<T>,
+        data: &TooltipState<T>,
         env: &druid::Env,
     ) {
-        self.label.lifecycle(ctx, event, &self.text.borrow().0, env)
+        self.label
+            .borrow_mut()
+            .lifecycle(ctx, event, &data.data, env)
     }
 
     fn update(
         &mut self,
         ctx: &mut druid::UpdateCtx,
         _old_data: &TooltipState<T>,
-        _data: &TooltipState<T>,
+        data: &TooltipState<T>,
         env: &druid::Env,
     ) {
-        self.label.update(ctx, &self.text.borrow().0, env)
+        self.label.borrow_mut().update(ctx, &data.data, env)
     }
 
     fn layout(
@@ -515,7 +488,10 @@ impl<T: Data> Widget<TooltipState<T>> for TooltipLabel {
         data: &TooltipState<T>,
         env: &druid::Env,
     ) -> druid::Size {
-        let mut size = self.label.layout(ctx, bc, &self.text.borrow().0, env);
+        let mut size = self.label.borrow_mut().layout(ctx, bc, &data.data, env);
+
+        self.label.borrow_mut().set_origin(ctx, data.offset);
+
         size.width += data.offset.x;
         size.height += data.offset.y;
         size
@@ -547,28 +523,16 @@ impl<T: Data> Widget<TooltipState<T>> for TooltipLabel {
             env.get(druid::theme::TEXTBOX_BORDER_WIDTH)
         };
 
-        let mut text = ctx.text().new_text_layout(<&str as Into<Arc<str>>>::into(
-            self.text.borrow().0.as_str(),
-        ));
-        text = text.default_attribute(TextAttribute::FontFamily(
-            env.get(druid::theme::UI_FONT).family,
-        ));
-        text = text.default_attribute(TextAttribute::FontSize(env.get(druid::theme::UI_FONT).size));
-        text = text.default_attribute(TextAttribute::Style(env.get(druid::theme::UI_FONT).style));
-        text = text.default_attribute(TextAttribute::Weight(env.get(druid::theme::UI_FONT).weight));
-        text = text.default_attribute(TextAttribute::TextColor(env.get(druid::theme::TEXT_COLOR)));
-        for attribute in self.text.borrow().1.iter() {
-            text = text.default_attribute(attribute.clone().resolve(env));
-        }
-        if let Ok(text) = text.build() {
-            ctx.paint_with_z_index(1_000_000, move |ctx| {
-                ctx.fill(rect, &fill_brush);
+        let label = self.label.clone();
+        let data = data.data.clone();
+        let env = env.clone();
+        ctx.paint_with_z_index(1_000_000, move |ctx| {
+            ctx.fill(rect, &fill_brush);
 
-                ctx.draw_text(&text, rect.origin());
+            label.borrow_mut().paint_always(ctx, &data, &env);
 
-                ctx.stroke(rect, &border_brush, border_width);
-            });
-        };
+            ctx.stroke(rect, &border_brush, border_width);
+        });
     }
 
     fn id(&self) -> Option<WidgetId> {
@@ -618,101 +582,5 @@ impl From<Arc<str>> for PlainOrRich {
 impl From<RichText> for PlainOrRich {
     fn from(rich: RichText) -> Self {
         PlainOrRich::Rich(rich)
-    }
-}
-
-enum YetAnotherAttribute {
-    Unresolved(Attribute),
-    UnresolvedFamily(Attribute),
-    UnresolvedSize(Attribute),
-    UnresolvedWeight(Attribute),
-    UnresolvedStyle(Attribute),
-    Resolved(TextAttribute),
-}
-
-impl YetAnotherAttribute {
-    fn resolve(self, env: &druid::Env) -> TextAttribute {
-        match self {
-            YetAnotherAttribute::Unresolved(unresolved) => match unresolved {
-                Attribute::FontSize(size) => TextAttribute::FontSize(size.resolve(env)),
-                Attribute::TextColor(color) => TextAttribute::TextColor(color.resolve(env)),
-                _ => unreachable!(),
-            },
-            YetAnotherAttribute::UnresolvedFamily(desc) => {
-                if let Attribute::Descriptor(desc) = desc {
-                    TextAttribute::FontFamily(desc.resolve(env).family)
-                } else {
-                    unreachable!()
-                }
-            }
-            YetAnotherAttribute::UnresolvedSize(desc) => {
-                if let Attribute::Descriptor(desc) = desc {
-                    TextAttribute::FontSize(desc.resolve(env).size)
-                } else {
-                    unreachable!()
-                }
-            }
-            YetAnotherAttribute::UnresolvedWeight(desc) => {
-                if let Attribute::Descriptor(desc) = desc {
-                    TextAttribute::Weight(desc.resolve(env).weight)
-                } else {
-                    unreachable!()
-                }
-            }
-            YetAnotherAttribute::UnresolvedStyle(desc) => {
-                if let Attribute::Descriptor(desc) = desc {
-                    TextAttribute::Style(desc.resolve(env).style)
-                } else {
-                    unreachable!()
-                }
-            }
-            YetAnotherAttribute::Resolved(attr) => attr,
-        }
-    }
-}
-
-impl TryFrom<Attribute> for YetAnotherAttribute {
-    type Error = [YetAnotherAttribute; 4];
-
-    fn try_from(value: Attribute) -> Result<Self, Self::Error> {
-        let res = match value {
-            Attribute::FontFamily(family) => Self::Resolved(TextAttribute::FontFamily(family)),
-            Attribute::Weight(attr) => Self::Resolved(TextAttribute::Weight(attr)),
-            Attribute::Style(attr) => Self::Resolved(TextAttribute::Style(attr)),
-            Attribute::Underline(attr) => Self::Resolved(TextAttribute::Underline(attr)),
-            Attribute::Strikethrough(attr) => Self::Resolved(TextAttribute::Strikethrough(attr)),
-            unresolved @ Attribute::FontSize(_) | unresolved @ Attribute::TextColor(_) => {
-                YetAnotherAttribute::Unresolved(unresolved)
-            }
-            descriptor @ Attribute::Descriptor(_) => Err([
-                YetAnotherAttribute::UnresolvedFamily(descriptor.clone()),
-                YetAnotherAttribute::UnresolvedSize(descriptor.clone()),
-                YetAnotherAttribute::UnresolvedWeight(descriptor.clone()),
-                YetAnotherAttribute::UnresolvedStyle(descriptor),
-            ])?,
-        };
-
-        Ok(res)
-    }
-}
-
-impl Clone for YetAnotherAttribute {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Unresolved(attr) => Self::Unresolved(attr.clone()),
-            Self::UnresolvedFamily(attr) => Self::UnresolvedFamily(attr.clone()),
-            Self::UnresolvedSize(attr) => Self::UnresolvedSize(attr.clone()),
-            Self::UnresolvedWeight(attr) => Self::UnresolvedWeight(attr.clone()),
-            Self::UnresolvedStyle(attr) => Self::UnresolvedStyle(attr.clone()),
-            Self::Resolved(attr) => Self::Resolved(match attr {
-                TextAttribute::FontFamily(val) => TextAttribute::FontFamily(val.clone()),
-                TextAttribute::FontSize(val) => TextAttribute::FontSize(*val),
-                TextAttribute::Weight(val) => TextAttribute::Weight(*val),
-                TextAttribute::TextColor(val) => TextAttribute::TextColor(*val),
-                TextAttribute::Style(val) => TextAttribute::Style(*val),
-                TextAttribute::Underline(val) => TextAttribute::Underline(*val),
-                TextAttribute::Strikethrough(val) => TextAttribute::Strikethrough(*val),
-            }),
-        }
     }
 }

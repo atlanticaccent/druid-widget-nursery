@@ -30,28 +30,22 @@ fn main() {
                 .with_flex_spacer(1.0)
                 .with_child(StackTooltip::new(
                     Label::new("TOP RIGHT"),
-                    String::from("TOOLTIP LOREM IPSUM DORUM"),
+                    "TOOLTIP LOREM IPSUM DORUM",
                 )),
         )
         .with_flex_spacer(1.0)
         .with_child(
             Flex::row()
                 .with_child(
-                    StackTooltip::new(
-                        Label::new("MID LEFT"),
-                        String::from("TOOLTIP LOREM IPSUM DORUM"),
-                    )
-                    .with_crosshair(true)
-                    .with_offset((5.0, 5.0))
-                    .cancel_stack_tooltip(),
+                    StackTooltip::new(Label::new("MID LEFT"), "TOOLTIP LOREM IPSUM DORUM")
+                        .with_crosshair(true)
+                        .with_offset((5.0, 5.0))
+                        .cancel_stack_tooltip(),
                 )
                 .with_flex_spacer(1.0)
                 .with_child(
-                    StackTooltip::new(
-                        Label::new("MID RIGHT"),
-                        String::from("TOOLTIP LOREM IPSUM DORUM"),
-                    )
-                    .cancel_stack_tooltip(),
+                    StackTooltip::new(Label::new("MID RIGHT"), "TOOLTIP LOREM IPSUM DORUM")
+                        .cancel_stack_tooltip(),
                 )
                 .background(druid::theme::BACKGROUND_LIGHT)
                 .stack_tooltip("IGNORE ME")
@@ -62,12 +56,12 @@ fn main() {
             Flex::row()
                 .with_child(StackTooltip::new(
                     Label::new("BOTTOM LEFT"),
-                    String::from("TOOLTIP LOREM IPSUM DORUM"),
+                    "TOOLTIP LOREM IPSUM DORUM",
                 ))
                 .with_flex_spacer(1.0)
-                .with_child(StackTooltip::new(
+                .with_child(StackTooltip::custom(
                     Label::new("BOTTOM RIGHT"),
-                    String::from("TOOLTIP LOREM IPSUM DORUM"),
+                    druid::widget::Spinner::new(),
                 )),
         )
         .expand()
