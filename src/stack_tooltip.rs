@@ -293,6 +293,16 @@ impl<T: Data> Widget<TooltipState<T>> for StackTooltipInternal<T> {
         data: &mut TooltipState<T>,
         env: &druid::Env,
     ) {
+        if let druid::Event::Wheel(mouse) = event {
+            if mouse.wheel_delta.length() > 0.0 {
+                reset_position(&mut data.position);
+                data.position.height = Some(0.0);
+                data.show = false;
+
+                return self.widget.event(ctx, event, data, env);
+            }
+        }
+
         if let Some(pos) = if let druid::Event::MouseMove(mouse) = event {
             Some(mouse.pos)
         } else if let druid::Event::Command(cmd) = event {
