@@ -27,7 +27,7 @@ use druid::{
 };
 
 const FORWARD: Selector<SingleUse<(WidgetId, Point)>> = Selector::new("tooltip.forward");
-const POINT_UPDATED: Selector = Selector::new("tooltip.label.point_updated");
+const POINT_UPDATED: Selector<Point> = Selector::new("tooltip.label.point_updated");
 pub(crate) const ADVISE_TOOLTIP_SHOW: Selector<Point> =
     Selector::new("tooltip.advise_show_tooltip");
 pub(crate) const CANCEL_TOOLTIP_SHOW: Selector = Selector::new("tooltip.cancel_show_tooltip");
@@ -350,7 +350,7 @@ impl<T: Data> Widget<TooltipState<T>> for StackTooltipInternal<T> {
 
                 if let Some(label_id) = self.label_id {
                     if data.label_size.is_none() {
-                        ctx.submit_command(POINT_UPDATED.to(label_id));
+                        ctx.submit_command(POINT_UPDATED.with(ctx.to_window(pos)).to(label_id));
                     }
                     ctx.submit_command(ADVISE_TOOLTIP_SHOW.with(ctx.to_window(pos)));
                 }
@@ -416,6 +416,7 @@ struct TooltipLabel<T, W> {
     label: Rc<RefCell<WidgetPod<T, W>>>,
     background: BackgroundCell,
     border: BorderCell,
+    layout_complete: bool,
 }
 
 impl<T: Data, W: Widget<T>> TooltipLabel<T, W> {
@@ -427,6 +428,7 @@ impl<T: Data, W: Widget<T>> TooltipLabel<T, W> {
             label: RefCell::new(label).into(),
             background,
             border,
+            layout_complete: false,
         }
     }
 }
@@ -442,25 +444,29 @@ impl<T: Data, W: Widget<T> + 'static> Widget<TooltipState<T>> for TooltipLabel<T
         if let druid::Event::MouseMove(mouse) = event {
             ctx.submit_command(FORWARD.with(SingleUse::new((ctx.widget_id(), mouse.window_pos))))
         } else if let druid::Event::Command(cmd) = event {
-            if cmd.is(POINT_UPDATED) {
+            if let Some(point) = cmd.get(POINT_UPDATED) {
+                let label_size = self.label.borrow().layout_rect().size();
+
                 if let Some(left) = data.position.left {
-                    let label_width = ctx.size().width;
+                    let label_width = label_size.width;
                     if left + label_width + ctx.window_origin().x > ctx.window().get_size().width {
                         data.position.left.replace(left - label_width);
                     }
                 }
                 if let Some(top) = data.position.top {
-                    let label_height = ctx.size().height;
+                    let label_height = label_size.height;
                     if top + label_height + ctx.window_origin().y > ctx.window().get_size().height {
                         data.position.top.replace(top - label_height);
                     }
                 }
 
-                if !ctx.size().is_empty() {
-                    data.label_size.replace(ctx.size());
+                if !label_size.is_empty() {
+                    data.label_size.replace(label_size);
+                    self.layout_complete = true;
+                } else {
+                    ctx.request_layout();
                 }
-
-                ctx.request_paint();
+                ctx.submit_command(FORWARD.with(SingleUse::new((ctx.widget_id(), *point))))
             }
         }
 
@@ -504,10 +510,15 @@ impl<T: Data, W: Widget<T> + 'static> Widget<TooltipState<T>> for TooltipLabel<T
 
         size.width += data.offset.x;
         size.height += data.offset.y;
+
         size
     }
 
     fn paint(&mut self, ctx: &mut druid::PaintCtx, data: &TooltipState<T>, env: &druid::Env) {
+        if !self.layout_complete {
+            return;
+        }
+
         let mut rect = ctx
             .size()
             .to_rect()
