@@ -187,7 +187,7 @@ type BorderCell = Rc<RefCell<(Option<KeyOrValue<Color>>, Option<f64>)>>;
 
 struct StackTooltipInternal<T> {
     widget: WidgetPod<TooltipState<T>, Stack<TooltipState<T>>>,
-    label_id: Option<WidgetId>,
+    label_id: WidgetId,
     background: BackgroundCell,
     border: BorderCell,
     use_crosshair: bool,
@@ -245,7 +245,7 @@ impl<T: Data> StackTooltipInternal<T> {
             TooltipState::data,
             Self {
                 widget: WidgetPod::new(stack),
-                label_id: Some(label_id),
+                label_id,
                 background,
                 border,
                 use_crosshair: false,
@@ -308,16 +308,12 @@ impl<T: Data> Widget<TooltipState<T>> for StackTooltipInternal<T> {
         } else if let druid::Event::Command(cmd) = event {
             cmd.get(FORWARD)
                 .and_then(SingleUse::take)
-                .and_then(|(id, point)| {
-                    self.label_id
-                        .filter(|label_id| label_id == &id)
-                        .and(Some(point))
-                })
+                .and_then(|(id, point)| (self.label_id == id).then_some(point))
                 .map(|point| (point - ctx.window_origin()).to_point())
         } else {
             None
         } {
-            if ctx.is_hot() && ctx.size().to_rect().contains(pos) {
+            if ctx.is_hot() {
                 let offset = self.offset.unwrap_or_default();
                 data.offset = offset;
 
@@ -348,12 +344,10 @@ impl<T: Data> Widget<TooltipState<T>> for StackTooltipInternal<T> {
                     ctx.set_cursor(&druid::Cursor::Crosshair);
                 }
 
-                if let Some(label_id) = self.label_id {
-                    if data.label_size.is_none() {
-                        ctx.submit_command(POINT_UPDATED.with(ctx.to_window(pos)).to(label_id));
-                    }
-                    ctx.submit_command(ADVISE_TOOLTIP_SHOW.with(ctx.to_window(pos)));
+                if data.label_size.is_none() {
+                    ctx.submit_command(POINT_UPDATED.with(ctx.to_window(pos)).to(self.label_id));
                 }
+                ctx.submit_command(ADVISE_TOOLTIP_SHOW.with(ctx.to_window(pos)));
             } else {
                 reset_position(&mut data.position);
                 data.position.height = Some(0.0);
@@ -463,6 +457,7 @@ impl<T: Data, W: Widget<T> + 'static> Widget<TooltipState<T>> for TooltipLabel<T
                 if !label_size.is_empty() {
                     data.label_size.replace(label_size);
                     self.layout_complete = true;
+                    data.show = true;
                 } else {
                     ctx.request_layout();
                 }
@@ -510,6 +505,14 @@ impl<T: Data, W: Widget<T> + 'static> Widget<TooltipState<T>> for TooltipLabel<T
 
         size.width += data.offset.x;
         size.height += data.offset.y;
+
+        if data.label_size.is_none() || data.label_size.unwrap().is_empty() {
+            ctx.submit_command(
+                POINT_UPDATED
+                    .with((data.position.left.unwrap(), data.position.top.unwrap()).into())
+                    .to(ctx.widget_id()),
+            );
+        }
 
         size
     }
