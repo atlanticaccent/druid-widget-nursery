@@ -438,7 +438,7 @@ impl<T: Data, W: Widget<T> + 'static> Widget<TooltipState<T>> for TooltipLabel<T
         if let druid::Event::MouseMove(mouse) = event {
             ctx.submit_command(FORWARD.with(SingleUse::new((ctx.widget_id(), mouse.window_pos))))
         } else if let druid::Event::Command(cmd) = event {
-            if let Some(point) = cmd.get(POINT_UPDATED) {
+            if let Some(_) = cmd.get(POINT_UPDATED) {
                 let label_size = self.label.borrow().layout_rect().size();
 
                 if let Some(left) = data.position.left {
@@ -458,10 +458,10 @@ impl<T: Data, W: Widget<T> + 'static> Widget<TooltipState<T>> for TooltipLabel<T
                     data.label_size.replace(label_size);
                     self.layout_complete = true;
                     data.show = true;
+                    ctx.request_paint();
                 } else {
                     ctx.request_layout();
                 }
-                ctx.submit_command(FORWARD.with(SingleUse::new((ctx.widget_id(), *point))))
             }
         }
 
